@@ -6,12 +6,22 @@ export type ArchitectPlan = {
 
 const MODEL = "gemini-1.5-flash";
 
-function getApiKey() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY environment variable.");
+function getApiKeys() {
+  const csv = process.env.GEMINI_API_KEYS?.trim();
+  const single = process.env.GEMINI_API_KEY?.trim();
+
+  const keys = [
+    ...(csv ? csv.split(",").map((item) => item.trim()) : []),
+    ...(single ? [single] : []),
+  ].filter(Boolean);
+
+  if (keys.length === 0) {
+    throw new Error(
+      "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).",
+    );
   }
-  return apiKey;
+
+  return Array.from(new Set(keys));
 }
 
 type GeminiResponse = {
@@ -22,8 +32,7 @@ type GeminiResponse = {
   }>;
 };
 
-async function geminiGenerate(systemPrompt: string, userPrompt: string) {
-  const apiKey = getApiKey();
+async function requestWithKey(apiKey: string, systemPrompt: string, userPrompt: string) {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
     {
@@ -53,6 +62,22 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string) {
   }
 
   return text;
+}
+
+async function geminiGenerate(systemPrompt: string, userPrompt: string) {
+  const keys = getApiKeys();
+  const errors: string[] = [];
+
+  for (let i = 0; i < keys.length; i += 1) {
+    try {
+      return await requestWithKey(keys[i], systemPrompt, userPrompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown Gemini error";
+      errors.push(`key#${i + 1}: ${message}`);
+    }
+  }
+
+  throw new Error(`All configured Gemini keys failed. ${errors.join(" | ")}`);
 }
 
 export async function generateArchitecturePlan(goal: string): Promise<ArchitectPlan> {

@@ -20,13 +20,23 @@ npm run dev
 Create `.env.local`:
 
 ```bash
+# Option A: single key
 GEMINI_API_KEY=your_key_here
+
+# Option B: fallback keys (recommended)
+GEMINI_API_KEYS=key_1,key_2
 ```
+
+## Gemini key fallback behavior
+
+- The app supports key failover.
+- It first reads `GEMINI_API_KEYS` (comma-separated), and also supports `GEMINI_API_KEY`.
+- If one key fails, it automatically retries with the next key.
 
 ## Gemini wiring details
 
 - `app/api/architect/route.ts` streams NDJSON events for live `Agent Logs` and emits the final strict plan JSON.
-- `lib/gemini.ts` centralizes Gemini REST integration and parsing.
+- `lib/gemini.ts` centralizes Gemini REST integration, key failover, and response parsing.
 - `app/actions.ts` exposes milestone boilerplate generation through a server action.
 
 The architecture JSON shape is:
