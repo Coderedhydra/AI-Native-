@@ -13,6 +13,7 @@ export async function generateMilestoneBoilerplate(goal: string, milestone: stri
     if (isMissingKeyError(error)) {
       return buildFallbackMilestoneStarter(milestone);
     }
-    throw error;
+
+    return `${buildFallbackMilestoneStarter(milestone)}\n\n---\nFallback reason: Gemini unavailable (quota/model/access).`;
   }
 }

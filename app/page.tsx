@@ -128,7 +128,7 @@ export default function HomePage() {
           {generationMode === "fallback" && (
             <Card className="border-amber-500/40 bg-amber-500/10">
               <CardContent className="pt-5 text-sm text-amber-200">
-                Gemini API key is not configured. Showing fallback architecture template so you can continue building.
+                Gemini is unavailable right now (key/quota/model). Showing fallback architecture template so you can continue building.
               </CardContent>
             </Card>
           )}

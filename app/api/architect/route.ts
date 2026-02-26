@@ -38,18 +38,13 @@ export async function POST(request: Request) {
         );
         controller.enqueue(encoder.encode(`${JSON.stringify({ type: "plan", payload: plan, mode })}\n`));
       } catch (error) {
-        if (isMissingKeyError(error)) {
-          const plan = buildFallbackArchitecturePlan(goal);
-          controller.enqueue(
-            encoder.encode(
-              `${JSON.stringify({ type: "log", message: "Gemini key missing. Using built-in fallback architecture template." })}\n`,
-            ),
-          );
-          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "plan", payload: plan, mode: "fallback" })}\n`));
-        } else {
-          const message = error instanceof Error ? error.message : "Failed to generate architecture.";
-          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "error", message })}\n`));
-        }
+        const plan = buildFallbackArchitecturePlan(goal);
+        const message = isMissingKeyError(error)
+          ? "Gemini key missing. Using built-in fallback architecture template."
+          : "Gemini unavailable (quota/model/access). Using built-in fallback architecture template.";
+
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "log", message })}\n`));
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "plan", payload: plan, mode: "fallback" })}\n`));
       } finally {
         controller.close();
       }

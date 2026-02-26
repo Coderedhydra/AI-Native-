@@ -43,6 +43,7 @@ npm run start
 ## No-key fallback mode
 
 - If no runtime Gemini key is configured, the app now uses embedded fallback API keys first, then continues to the built-in local template fallback only if Gemini requests still fail.
+- If Gemini returns access/quota/model errors, the app also degrades gracefully to built-in templates instead of surfacing blocking runtime errors.
 - This avoids runtime blocking during demos/deployment smoke tests and keeps the UI usable.
 - You can still override keys with `GEMINI_API_KEY` or `GEMINI_API_KEYS`.
 
@@ -53,7 +54,8 @@ npm run start
 
 ## Model compatibility fallback
 
-- Gemini generation now tries multiple models automatically (`gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-pro`).
+- Gemini generation performs automatic model discovery (`/v1beta/models`) and prefers models that support `generateContent`.
+- It still keeps a static fallback model chain (`gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-pro`).
 - This handles 404 model-not-found issues across API/project configurations.
 
 ## Gemini key fallback behavior

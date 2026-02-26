@@ -4,7 +4,7 @@ export type ArchitectPlan = {
   aiNativeShortcuts: string[];
 };
 
-const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+const MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
 const MISSING_KEY_MESSAGE =
   "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).";
 
@@ -70,11 +70,41 @@ async function requestWithKey(model: string, apiKey: string, systemPrompt: strin
   return text;
 }
 
+async function listGenerateContentModels(apiKey: string) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return [] as string[];
+  }
+
+  const payload = (await response.json()) as {
+    models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+  };
+
+  const models = payload.models
+    ?.filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
+    .map((model) => model.name?.replace("models/", ""))
+    .filter((name): name is string => Boolean(name));
+
+  return models ?? [];
+}
+
 async function geminiGenerate(systemPrompt: string, userPrompt: string) {
   const keys = getApiKeys();
   const errors: string[] = [];
+  let candidateModels = [...MODELS];
 
-  for (const model of MODELS) {
+  for (const key of keys) {
+    const discovered = await listGenerateContentModels(key);
+    if (discovered.length > 0) {
+      candidateModels = Array.from(new Set([...discovered, ...MODELS]));
+      break;
+    }
+  }
+
+  for (const model of candidateModels) {
     for (let i = 0; i < keys.length; i += 1) {
       try {
         return await requestWithKey(model, keys[i], systemPrompt, userPrompt);
