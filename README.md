@@ -59,6 +59,8 @@ npm run start
 - It uses a cheap-model-first static fallback chain (`gemini-2.0-flash-lite`, `gemini-2.0-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-flash`).
 - Requests are tuned for lower token budgets to reduce quota burn (architecture: 600 tokens, milestone code: 1200 tokens).
 - Keys returning `403`/`429` are skipped for the remainder of the request to avoid repeated wasteful retries.
+- `429` responses are retried with exponential backoff (1s, 2s, 4s).
+- A lightweight in-process circuit breaker pauses Gemini attempts for 5 minutes after repeated failures.
 - This handles 404 model-not-found issues across API/project configurations.
 
 ## Gemini key fallback behavior

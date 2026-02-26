@@ -7,11 +7,14 @@ export type ArchitectPlan = {
 const MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash-8b", "gemini-1.5-flash"];
 const MISSING_KEY_MESSAGE =
   "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).";
-
 const EMBEDDED_FALLBACK_KEYS = [
   "AIzaSyBbe1Xg3Nu_GtSCRQqi7LUAHqjHbxMdMNI",
   "AIzaSyDL2mfCJPXWUPwhgBDWLuBg4T1eFcocdjc",
 ];
+
+const RETRY_DELAYS_MS = [1000, 2000, 4000];
+const CIRCUIT_BREAKER_THRESHOLD = 4;
+const CIRCUIT_BREAKER_WINDOW_MS = 5 * 60 * 1000;
 
 type GenerationOptions = { maxOutputTokens?: number };
 
@@ -27,6 +30,32 @@ type GeminiRequestFailure = {
   status: number;
   message: string;
 };
+
+const circuitBreakerState = {
+  failures: 0,
+  openedUntil: 0,
+};
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function circuitBreakerOpen() {
+  return Date.now() < circuitBreakerState.openedUntil;
+}
+
+function recordFailure() {
+  circuitBreakerState.failures += 1;
+  if (circuitBreakerState.failures >= CIRCUIT_BREAKER_THRESHOLD) {
+    circuitBreakerState.openedUntil = Date.now() + CIRCUIT_BREAKER_WINDOW_MS;
+    circuitBreakerState.failures = 0;
+  }
+}
+
+function recordSuccess() {
+  circuitBreakerState.failures = 0;
+  circuitBreakerState.openedUntil = 0;
+}
 
 function getApiKeys() {
   const csv = process.env.GEMINI_API_KEYS?.trim();
@@ -47,7 +76,7 @@ function getApiKeys() {
 
 function summarizeErrorPayload(payloadText: string) {
   const condensed = payloadText.replace(/\s+/g, " ").trim();
-  return condensed.slice(0, 240);
+  return condensed.slice(0, 220);
 }
 
 async function requestWithKey(
@@ -79,11 +108,10 @@ async function requestWithKey(
 
   if (!response.ok) {
     const details = await response.text();
-    const failure: GeminiRequestFailure = {
+    throw {
       status: response.status,
       message: `model=${model} status=${response.status} ${summarizeErrorPayload(details)}`,
-    };
-    throw failure;
+    } satisfies GeminiRequestFailure;
   }
 
   const data = (await response.json()) as GeminiResponse;
@@ -94,6 +122,33 @@ async function requestWithKey(
   }
 
   return text;
+}
+
+async function requestWithBackoff(
+  model: string,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  options?: GenerationOptions,
+) {
+  let lastError: GeminiRequestFailure | null = null;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await requestWithKey(model, apiKey, systemPrompt, userPrompt, options);
+    } catch (error) {
+      if (!isFailure(error)) {
+        throw error;
+      }
+      lastError = error;
+      if (error.status !== 429 || attempt === RETRY_DELAYS_MS.length) {
+        break;
+      }
+      await delay(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  throw lastError ?? { status: 500, message: "Unknown Gemini request failure." };
 }
 
 async function listGenerateContentModels(apiKey: string) {
@@ -122,6 +177,10 @@ function isFailure(error: unknown): error is GeminiRequestFailure {
 }
 
 async function geminiGenerate(systemPrompt: string, userPrompt: string, options?: GenerationOptions) {
+  if (circuitBreakerOpen()) {
+    throw new Error("Gemini temporarily disabled by circuit breaker due to repeated failures.");
+  }
+
   const keys = getApiKeys();
   const errors: string[] = [];
   const blockedKeys = new Set<number>();
@@ -142,13 +201,17 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string, options?
       }
 
       try {
-        return await requestWithKey(model, keys[i], systemPrompt, userPrompt, options);
+        const text = await requestWithBackoff(model, keys[i], systemPrompt, userPrompt, options);
+        recordSuccess();
+        return text;
       } catch (error) {
         if (isFailure(error)) {
           errors.push(`key#${i + 1}: ${error.message}`);
           if (error.status === 403 || error.status === 429) {
             blockedKeys.add(i);
           }
+        } else if (error instanceof Error) {
+          errors.push(`key#${i + 1}: ${error.message}`);
         } else {
           errors.push(`key#${i + 1}: unknown Gemini error`);
         }
@@ -156,6 +219,7 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string, options?
     }
   }
 
+  recordFailure();
   throw new Error(
     `Gemini unavailable after model/key failover. ${errors.slice(0, 4).join(" | ")} ${errors.length > 4 ? "..." : ""}`,
   );
