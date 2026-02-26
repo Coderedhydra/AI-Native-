@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { generateArchitecturePlan } from "@/lib/gemini";
+import {
+  buildFallbackArchitecturePlan,
+  generateArchitecturePlan,
+  isMissingKeyError,
+} from "@/lib/gemini";
 
 const breakdownStages = [
   "Analyzing product scope and constraints...",
@@ -27,14 +31,25 @@ export async function POST(request: Request) {
         }
 
         const plan = await generateArchitecturePlan(goal);
+        const mode: "gemini" | "fallback" = "gemini";
 
         controller.enqueue(
           encoder.encode(`${JSON.stringify({ type: "log", message: "Architecture finalized and validated." })}\n`),
         );
-        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "plan", payload: plan })}\n`));
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "plan", payload: plan, mode })}\n`));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to generate architecture.";
-        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "error", message })}\n`));
+        if (isMissingKeyError(error)) {
+          const plan = buildFallbackArchitecturePlan(goal);
+          controller.enqueue(
+            encoder.encode(
+              `${JSON.stringify({ type: "log", message: "Gemini key missing. Using built-in fallback architecture template." })}\n`,
+            ),
+          );
+          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "plan", payload: plan, mode: "fallback" })}\n`));
+        } else {
+          const message = error instanceof Error ? error.message : "Failed to generate architecture.";
+          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "error", message })}\n`));
+        }
       } finally {
         controller.close();
       }

@@ -39,6 +39,13 @@ npm run start
 - If you see `Failed to load plugin 'prettier' declared in PersonalConfig`, this project now ships a local root ESLint config (`.eslintrc.json`) so your global ESLint config is ignored.
 - If you see missing types for `react-syntax-highlighter`, ensure dependencies were installed after pulling latest changes (`@types/react-syntax-highlighter` is included in `devDependencies`).
 
+
+## No-key fallback mode
+
+- If no Gemini API key is configured, the app now auto-switches to a built-in fallback architecture plan and fallback milestone starter code.
+- This avoids runtime blocking during demos/deployment smoke tests and keeps the UI usable.
+- To use live Gemini outputs, set `GEMINI_API_KEY` or `GEMINI_API_KEYS`.
+
 ## Gemini key fallback behavior
 
 - The app supports key failover.

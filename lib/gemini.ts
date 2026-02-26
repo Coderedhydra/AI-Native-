@@ -5,6 +5,8 @@ export type ArchitectPlan = {
 };
 
 const MODEL = "gemini-1.5-flash";
+const MISSING_KEY_MESSAGE =
+  "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).";
 
 function getApiKeys() {
   const csv = process.env.GEMINI_API_KEYS?.trim();
@@ -16,9 +18,7 @@ function getApiKeys() {
   ].filter(Boolean);
 
   if (keys.length === 0) {
-    throw new Error(
-      "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).",
-    );
+    throw new Error(MISSING_KEY_MESSAGE);
   }
 
   return Array.from(new Set(keys));
@@ -78,6 +78,47 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string) {
   }
 
   throw new Error(`All configured Gemini keys failed. ${errors.join(" | ")}`);
+}
+
+export function isMissingKeyError(error: unknown) {
+  return error instanceof Error && error.message.includes(MISSING_KEY_MESSAGE);
+}
+
+export function buildFallbackArchitecturePlan(goal: string): ArchitectPlan {
+  return {
+    techStack: [
+      "Next.js 14 (App Router)",
+      "TypeScript",
+      "Tailwind CSS + shadcn/ui",
+      "PostgreSQL + Prisma",
+      "Redis",
+      "NextAuth/Auth.js",
+      "OpenTelemetry",
+      "Vercel",
+    ],
+    milestones: [
+      `Define domain boundaries and threat model for: ${goal}`,
+      "Implement secure auth, RBAC, session hardening, and audit logs",
+      "Build fintech dashboard modules with transactional data pipelines",
+      "Add compliance controls (PII handling, encryption, retention policies)",
+      "Ship observability, SLO alerts, and release automation",
+    ],
+    aiNativeShortcuts: [
+      "Cursor rule: always scaffold feature folders with route, schema, service, and tests",
+      "v0 prompt: generate KPI dashboard cards + responsive filters + empty states",
+      "Agent task split: one agent for security baseline, one for data layer, one for UI polish",
+    ],
+  };
+}
+
+export function buildFallbackMilestoneStarter(milestone: string) {
+  return `# Fallback starter (Gemini key not configured)\n\nMilestone: ${milestone}\n\n\`\`\`ts\n// app/(dashboard)/${milestone
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 40)}/page.tsx\nexport default function MilestonePage() {\n  return (\n    <section className=\"p-6\">\n      <h1 className=\"text-xl font-semibold\">${milestone}</h1>\n      <p className=\"text-sm text-muted-foreground mt-2\">\n        Replace this fallback with Gemini-generated implementation once API keys are configured.\n      </p>\n    </section>\n  );\n}\n\`\`\`\n\n\`\`\`ts\n// lib/${milestone
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 40)}.ts\nexport function executeMilestoneTask() {\n  return \"TODO: implement milestone service logic\";\n}\n\`\`\``;
 }
 
 export async function generateArchitecturePlan(goal: string): Promise<ArchitectPlan> {
