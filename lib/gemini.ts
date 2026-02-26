@@ -4,7 +4,7 @@ export type ArchitectPlan = {
   aiNativeShortcuts: string[];
 };
 
-const MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+const MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash-8b", "gemini-1.5-flash"];
 const MISSING_KEY_MESSAGE =
   "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).";
 
@@ -38,7 +38,15 @@ type GeminiResponse = {
   }>;
 };
 
-async function requestWithKey(model: string, apiKey: string, systemPrompt: string, userPrompt: string) {
+type GenerationOptions = { maxOutputTokens?: number };
+
+async function requestWithKey(
+  model: string,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  options?: GenerationOptions,
+) {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -49,6 +57,10 @@ async function requestWithKey(model: string, apiKey: string, systemPrompt: strin
         systemInstruction: {
           role: "system",
           parts: [{ text: systemPrompt }],
+        },
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: options?.maxOutputTokens ?? 1024,
         },
       }),
       cache: "no-store",
@@ -91,7 +103,7 @@ async function listGenerateContentModels(apiKey: string) {
   return models ?? [];
 }
 
-async function geminiGenerate(systemPrompt: string, userPrompt: string) {
+async function geminiGenerate(systemPrompt: string, userPrompt: string, options?: GenerationOptions) {
   const keys = getApiKeys();
   const errors: string[] = [];
   let candidateModels = [...MODELS];
@@ -107,7 +119,7 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string) {
   for (const model of candidateModels) {
     for (let i = 0; i < keys.length; i += 1) {
       try {
-        return await requestWithKey(model, keys[i], systemPrompt, userPrompt);
+        return await requestWithKey(model, keys[i], systemPrompt, userPrompt, options);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown Gemini error";
         errors.push(`model=${model}, key#${i + 1}: ${message}`);
@@ -163,7 +175,7 @@ export async function generateArchitecturePlan(goal: string): Promise<ArchitectP
   const systemPrompt =
     "You are a Senior AI Solutions Architect specializing in ultra-fast prototyping using Cursor and v0. Output ONLY strict JSON with keys: techStack (string[]), milestones (string[5]), aiNativeShortcuts (string[3]).";
 
-  const raw = await geminiGenerate(systemPrompt, `Project Goal: ${goal}`);
+  const raw = await geminiGenerate(systemPrompt, `Project Goal: ${goal}`, { maxOutputTokens: 900 });
   const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
   const parsed = JSON.parse(cleaned) as ArchitectPlan;
 
@@ -189,5 +201,6 @@ export async function generateMilestoneStarter(goal: string, milestone: string) 
   return geminiGenerate(
     systemPrompt,
     `Project goal: ${goal}\nMilestone: ${milestone}\nReturn practical boilerplate code and setup notes.`,
+    { maxOutputTokens: 1800 },
   );
 }

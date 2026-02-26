@@ -55,7 +55,8 @@ npm run start
 ## Model compatibility fallback
 
 - Gemini generation performs automatic model discovery (`/v1beta/models`) and prefers models that support `generateContent`.
-- It still keeps a static fallback model chain (`gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-pro`).
+- It uses a cheap-model-first static fallback chain (`gemini-2.0-flash-lite`, `gemini-2.0-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-flash`).
+- Requests are tuned for lower token budgets to reduce quota burn (architecture: lower tokens, milestone code: moderate tokens).
 - This handles 404 model-not-found issues across API/project configurations.
 
 ## Gemini key fallback behavior
