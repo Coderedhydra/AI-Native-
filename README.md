@@ -50,13 +50,15 @@ npm run start
 ## Embedded fallback keys
 
 - Two embedded Gemini keys are included in `lib/gemini.ts` as requested for no-env deployment.
+- The second embedded key was updated to your latest provided key.
 
 
 ## Model compatibility fallback
 
 - Gemini generation performs automatic model discovery (`/v1beta/models`) and prefers models that support `generateContent`.
 - It uses a cheap-model-first static fallback chain (`gemini-2.0-flash-lite`, `gemini-2.0-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-flash`).
-- Requests are tuned for lower token budgets to reduce quota burn (architecture: lower tokens, milestone code: moderate tokens).
+- Requests are tuned for lower token budgets to reduce quota burn (architecture: 600 tokens, milestone code: 1200 tokens).
+- Keys returning `403`/`429` are skipped for the remainder of the request to avoid repeated wasteful retries.
 - This handles 404 model-not-found issues across API/project configurations.
 
 ## Gemini key fallback behavior

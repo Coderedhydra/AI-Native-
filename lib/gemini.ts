@@ -10,8 +10,23 @@ const MISSING_KEY_MESSAGE =
 
 const EMBEDDED_FALLBACK_KEYS = [
   "AIzaSyBbe1Xg3Nu_GtSCRQqi7LUAHqjHbxMdMNI",
-  "AIzaSyCvKLiirQHF4T8Sx4lPObmiNSbA3U0mqlI",
+  "AIzaSyDL2mfCJPXWUPwhgBDWLuBg4T1eFcocdjc",
 ];
+
+type GenerationOptions = { maxOutputTokens?: number };
+
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
+};
+
+type GeminiRequestFailure = {
+  status: number;
+  message: string;
+};
 
 function getApiKeys() {
   const csv = process.env.GEMINI_API_KEYS?.trim();
@@ -30,15 +45,10 @@ function getApiKeys() {
   return Array.from(new Set(keys));
 }
 
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>;
-    };
-  }>;
-};
-
-type GenerationOptions = { maxOutputTokens?: number };
+function summarizeErrorPayload(payloadText: string) {
+  const condensed = payloadText.replace(/\s+/g, " ").trim();
+  return condensed.slice(0, 240);
+}
 
 async function requestWithKey(
   model: string,
@@ -59,8 +69,8 @@ async function requestWithKey(
           parts: [{ text: systemPrompt }],
         },
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: options?.maxOutputTokens ?? 1024,
+          temperature: 0.2,
+          maxOutputTokens: options?.maxOutputTokens ?? 700,
         },
       }),
       cache: "no-store",
@@ -69,14 +79,18 @@ async function requestWithKey(
 
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(`Gemini request failed for ${model} (${response.status}): ${details}`);
+    const failure: GeminiRequestFailure = {
+      status: response.status,
+      message: `model=${model} status=${response.status} ${summarizeErrorPayload(details)}`,
+    };
+    throw failure;
   }
 
   const data = (await response.json()) as GeminiResponse;
   const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n").trim();
 
   if (!text) {
-    throw new Error("Gemini returned an empty response.");
+    throw { status: 500, message: "Gemini returned an empty response." } satisfies GeminiRequestFailure;
   }
 
   return text;
@@ -95,21 +109,26 @@ async function listGenerateContentModels(apiKey: string) {
     models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
   };
 
-  const models = payload.models
-    ?.filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
-    .map((model) => model.name?.replace("models/", ""))
-    .filter((name): name is string => Boolean(name));
+  return (
+    payload.models
+      ?.filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
+      .map((model) => model.name?.replace("models/", ""))
+      .filter((name): name is string => Boolean(name)) ?? []
+  );
+}
 
-  return models ?? [];
+function isFailure(error: unknown): error is GeminiRequestFailure {
+  return Boolean(error && typeof error === "object" && "status" in error && "message" in error);
 }
 
 async function geminiGenerate(systemPrompt: string, userPrompt: string, options?: GenerationOptions) {
   const keys = getApiKeys();
   const errors: string[] = [];
+  const blockedKeys = new Set<number>();
   let candidateModels = [...MODELS];
 
-  for (const key of keys) {
-    const discovered = await listGenerateContentModels(key);
+  for (let i = 0; i < keys.length; i += 1) {
+    const discovered = await listGenerateContentModels(keys[i]);
     if (discovered.length > 0) {
       candidateModels = Array.from(new Set([...discovered, ...MODELS]));
       break;
@@ -118,16 +137,28 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string, options?
 
   for (const model of candidateModels) {
     for (let i = 0; i < keys.length; i += 1) {
+      if (blockedKeys.has(i)) {
+        continue;
+      }
+
       try {
         return await requestWithKey(model, keys[i], systemPrompt, userPrompt, options);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown Gemini error";
-        errors.push(`model=${model}, key#${i + 1}: ${message}`);
+        if (isFailure(error)) {
+          errors.push(`key#${i + 1}: ${error.message}`);
+          if (error.status === 403 || error.status === 429) {
+            blockedKeys.add(i);
+          }
+        } else {
+          errors.push(`key#${i + 1}: unknown Gemini error`);
+        }
       }
     }
   }
 
-  throw new Error(`All configured Gemini model/key combinations failed. ${errors.join(" | ")}`);
+  throw new Error(
+    `Gemini unavailable after model/key failover. ${errors.slice(0, 4).join(" | ")} ${errors.length > 4 ? "..." : ""}`,
+  );
 }
 
 export function isMissingKeyError(error: unknown) {
@@ -162,20 +193,17 @@ export function buildFallbackArchitecturePlan(goal: string): ArchitectPlan {
 }
 
 export function buildFallbackMilestoneStarter(milestone: string) {
-  return `# Fallback starter (Gemini key not configured)\n\nMilestone: ${milestone}\n\n\`\`\`ts\n// app/(dashboard)/${milestone
+  return `# Fallback starter (Gemini unavailable)\n\nMilestone: ${milestone}\n\n\`\`\`ts\n// app/(dashboard)/${milestone
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .slice(0, 40)}/page.tsx\nexport default function MilestonePage() {\n  return (\n    <section className=\"p-6\">\n      <h1 className=\"text-xl font-semibold\">${milestone}</h1>\n      <p className=\"text-sm text-muted-foreground mt-2\">\n        Replace this fallback with Gemini-generated implementation once API keys are configured.\n      </p>\n    </section>\n  );\n}\n\`\`\`\n\n\`\`\`ts\n// lib/${milestone
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .slice(0, 40)}.ts\nexport function executeMilestoneTask() {\n  return \"TODO: implement milestone service logic\";\n}\n\`\`\``;
+    .slice(0, 40)}/page.tsx\nexport default function MilestonePage() {\n  return (\n    <section className=\"p-6\">\n      <h1 className=\"text-xl font-semibold\">${milestone}</h1>\n      <p className=\"text-sm text-muted-foreground mt-2\">\n        Replace this fallback with Gemini-generated implementation once API is healthy.\n      </p>\n    </section>\n  );\n}\n\`\`\``;
 }
 
 export async function generateArchitecturePlan(goal: string): Promise<ArchitectPlan> {
   const systemPrompt =
-    "You are a Senior AI Solutions Architect specializing in ultra-fast prototyping using Cursor and v0. Output ONLY strict JSON with keys: techStack (string[]), milestones (string[5]), aiNativeShortcuts (string[3]).";
+    "You are a Senior AI Solutions Architect specialized in rapid prototyping. Output ONLY strict JSON with keys techStack (string[]), milestones (string[5]), aiNativeShortcuts (string[3]). Keep it concise.";
 
-  const raw = await geminiGenerate(systemPrompt, `Project Goal: ${goal}`, { maxOutputTokens: 900 });
+  const raw = await geminiGenerate(systemPrompt, `Project Goal: ${goal}`, { maxOutputTokens: 600 });
   const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
   const parsed = JSON.parse(cleaned) as ArchitectPlan;
 
@@ -196,11 +224,11 @@ export async function generateArchitecturePlan(goal: string): Promise<ArchitectP
 
 export async function generateMilestoneStarter(goal: string, milestone: string) {
   const systemPrompt =
-    "You are a Senior AI Solutions Architect who writes production-minded starter boilerplate. Return concise code with filenames and fenced code blocks.";
+    "You are a Senior AI Solutions Architect. Return concise starter code with filenames and fenced code blocks.";
 
   return geminiGenerate(
     systemPrompt,
-    `Project goal: ${goal}\nMilestone: ${milestone}\nReturn practical boilerplate code and setup notes.`,
-    { maxOutputTokens: 1800 },
+    `Project goal: ${goal}\nMilestone: ${milestone}\nReturn practical starter code only.`,
+    { maxOutputTokens: 1200 },
   );
 }
