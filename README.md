@@ -27,6 +27,18 @@ GEMINI_API_KEY=your_key_here
 GEMINI_API_KEYS=key_1,key_2
 ```
 
+## Build and start production
+
+```bash
+npm run build
+npm run start
+```
+
+## If build fails on your machine
+
+- If you see `Failed to load plugin 'prettier' declared in PersonalConfig`, this project now ships a local root ESLint config (`.eslintrc.json`) so your global ESLint config is ignored.
+- If you see missing types for `react-syntax-highlighter`, ensure dependencies were installed after pulling latest changes (`@types/react-syntax-highlighter` is included in `devDependencies`).
+
 ## Gemini key fallback behavior
 
 - The app supports key failover.
