@@ -42,9 +42,13 @@ npm run start
 
 ## No-key fallback mode
 
-- If no Gemini API key is configured, the app now auto-switches to a built-in fallback architecture plan and fallback milestone starter code.
+- If no runtime Gemini key is configured, the app now uses embedded fallback API keys first, then continues to the built-in local template fallback only if Gemini requests still fail.
 - This avoids runtime blocking during demos/deployment smoke tests and keeps the UI usable.
-- To use live Gemini outputs, set `GEMINI_API_KEY` or `GEMINI_API_KEYS`.
+- You can still override keys with `GEMINI_API_KEY` or `GEMINI_API_KEYS`.
+
+## Embedded fallback keys
+
+- Two embedded Gemini keys are included in `lib/gemini.ts` as requested for no-env deployment.
 
 ## Gemini key fallback behavior
 

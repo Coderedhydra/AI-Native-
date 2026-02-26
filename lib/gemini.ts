@@ -8,6 +8,11 @@ const MODEL = "gemini-1.5-flash";
 const MISSING_KEY_MESSAGE =
   "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).";
 
+const EMBEDDED_FALLBACK_KEYS = [
+  "AIzaSyBbe1Xg3Nu_GtSCRQqi7LUAHqjHbxMdMNI",
+  "AIzaSyCvKLiirQHF4T8Sx4lPObmiNSbA3U0mqlI",
+];
+
 function getApiKeys() {
   const csv = process.env.GEMINI_API_KEYS?.trim();
   const single = process.env.GEMINI_API_KEY?.trim();
@@ -15,6 +20,7 @@ function getApiKeys() {
   const keys = [
     ...(csv ? csv.split(",").map((item) => item.trim()) : []),
     ...(single ? [single] : []),
+    ...EMBEDDED_FALLBACK_KEYS,
   ].filter(Boolean);
 
   if (keys.length === 0) {
