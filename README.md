@@ -50,6 +50,12 @@ npm run start
 
 - Two embedded Gemini keys are included in `lib/gemini.ts` as requested for no-env deployment.
 
+
+## Model compatibility fallback
+
+- Gemini generation now tries multiple models automatically (`gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-pro`).
+- This handles 404 model-not-found issues across API/project configurations.
+
 ## Gemini key fallback behavior
 
 - The app supports key failover.

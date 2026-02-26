@@ -4,7 +4,7 @@ export type ArchitectPlan = {
   aiNativeShortcuts: string[];
 };
 
-const MODEL = "gemini-1.5-flash";
+const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
 const MISSING_KEY_MESSAGE =
   "Missing Gemini API key. Set GEMINI_API_KEY or GEMINI_API_KEYS (comma-separated).";
 
@@ -38,9 +38,9 @@ type GeminiResponse = {
   }>;
 };
 
-async function requestWithKey(apiKey: string, systemPrompt: string, userPrompt: string) {
+async function requestWithKey(model: string, apiKey: string, systemPrompt: string, userPrompt: string) {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -57,7 +57,7 @@ async function requestWithKey(apiKey: string, systemPrompt: string, userPrompt: 
 
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(`Gemini request failed (${response.status}): ${details}`);
+    throw new Error(`Gemini request failed for ${model} (${response.status}): ${details}`);
   }
 
   const data = (await response.json()) as GeminiResponse;
@@ -74,16 +74,18 @@ async function geminiGenerate(systemPrompt: string, userPrompt: string) {
   const keys = getApiKeys();
   const errors: string[] = [];
 
-  for (let i = 0; i < keys.length; i += 1) {
-    try {
-      return await requestWithKey(keys[i], systemPrompt, userPrompt);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown Gemini error";
-      errors.push(`key#${i + 1}: ${message}`);
+  for (const model of MODELS) {
+    for (let i = 0; i < keys.length; i += 1) {
+      try {
+        return await requestWithKey(model, keys[i], systemPrompt, userPrompt);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown Gemini error";
+        errors.push(`model=${model}, key#${i + 1}: ${message}`);
+      }
     }
   }
 
-  throw new Error(`All configured Gemini keys failed. ${errors.join(" | ")}`);
+  throw new Error(`All configured Gemini model/key combinations failed. ${errors.join(" | ")}`);
 }
 
 export function isMissingKeyError(error: unknown) {
