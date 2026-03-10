@@ -1,1 +1,86 @@
-# AI-Native-
+# AI-Native Project Architect
+
+A high-end dark-mode Next.js app that architects AI-native projects with Gemini, shows real-time Agent Logs, and generates milestone-level boilerplate code.
+
+## Stack
+
+- Next.js (App Router) + TypeScript
+- Tailwind CSS
+- shadcn/ui-style reusable components
+- Lucide icons
+- Google Gemini API (REST)
+
+## Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+Create `.env.local`:
+
+```bash
+# Option A: single key
+GEMINI_API_KEY=your_key_here
+
+# Option B: fallback keys (recommended)
+GEMINI_API_KEYS=key_1,key_2
+```
+
+## Build and start production
+
+```bash
+npm run build
+npm run start
+```
+
+## If build fails on your machine
+
+- If you see `Failed to load plugin 'prettier' declared in PersonalConfig`, this project now ships a local root ESLint config (`.eslintrc.json`) so your global ESLint config is ignored.
+- If you see missing types for `react-syntax-highlighter`, ensure dependencies were installed after pulling latest changes (`@types/react-syntax-highlighter` is included in `devDependencies`).
+
+
+## No-key fallback mode
+
+- If no runtime Gemini key is configured, the app now uses embedded fallback API keys first, then continues to the built-in local template fallback only if Gemini requests still fail.
+- If Gemini returns access/quota/model errors, the app also degrades gracefully to built-in templates instead of surfacing blocking runtime errors.
+- This avoids runtime blocking during demos/deployment smoke tests and keeps the UI usable.
+- You can still override keys with `GEMINI_API_KEY` or `GEMINI_API_KEYS`.
+
+## Embedded fallback keys
+
+- Two embedded Gemini keys are included in `lib/gemini.ts` as requested for no-env deployment.
+- The second embedded key was updated to your latest provided key.
+
+
+## Model compatibility fallback
+
+- Gemini generation performs automatic model discovery (`/v1beta/models`) and prefers models that support `generateContent`.
+- It uses a cheap-model-first static fallback chain (`gemini-2.0-flash-lite`, `gemini-2.0-flash`, `gemini-1.5-flash-8b`, `gemini-1.5-flash`).
+- Requests are tuned for lower token budgets to reduce quota burn (architecture: 600 tokens, milestone code: 1200 tokens).
+- Keys returning `403`/`429` are skipped for the remainder of the request to avoid repeated wasteful retries.
+- `429` responses are retried with exponential backoff (1s, 2s, 4s).
+- A lightweight in-process circuit breaker pauses Gemini attempts for 5 minutes after repeated failures.
+- This handles 404 model-not-found issues across API/project configurations.
+
+## Gemini key fallback behavior
+
+- The app supports key failover.
+- It first reads `GEMINI_API_KEYS` (comma-separated), and also supports `GEMINI_API_KEY`.
+- If one key fails, it automatically retries with the next key.
+
+## Gemini wiring details
+
+- `app/api/architect/route.ts` streams NDJSON events for live `Agent Logs` and emits the final strict plan JSON.
+- `lib/gemini.ts` centralizes Gemini REST integration, key failover, and response parsing.
+- `app/actions.ts` exposes milestone boilerplate generation through a server action.
+
+The architecture JSON shape is:
+- `techStack: string[]`
+- `milestones: string[5]`
+- `aiNativeShortcuts: string[3]`
+
+## Notes
+
+- The UI uses glassmorphism styling with responsive layout and an `Agent Logs` sidebar.
+- Generated milestone code is displayed in a syntax-highlighted block.
